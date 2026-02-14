@@ -2,6 +2,15 @@
 
 # dependencies
 node_modules/
+node_modules
+.expo
+.expo-shared
+.env
+.env.local
+dist
+web-build
+npm-debug.log
+*.log
 
 # Expo
 .expo/
