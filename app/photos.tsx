@@ -5,13 +5,9 @@ import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 export default function PhotosScreen() {
   const { width } = useWindowDimensions();
 
-  // Match your screen padding (24) and spacing between tiles (12)
   const horizontalPadding = 24;
   const tileSpacing = 12;
 
-  // Two tiles per row:
-  // total usable width = screen width - left padding - right padding
-  // minus spacing between the two tiles
   const tileSize = useMemo(() => {
     const usable = width - horizontalPadding * 2;
     return Math.floor((usable - tileSpacing) / 2);

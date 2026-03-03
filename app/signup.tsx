@@ -1,14 +1,15 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { supabase } from "../lib/supabase";
 
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
@@ -18,10 +19,24 @@ export default function SignupScreen() {
     return email.trim().length > 0 && password.length >= 6;
   }, [email, password]);
 
-  const onSignup = () => {
-    // Mock for now — later becomes Supabase auth
-    router.replace("/profile-setup");
-  };
+  const onSignup = async () => {
+  const cleanEmail = email.trim();
+
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail,
+    password,
+  });
+
+  if (error) {
+    console.log("Signup error:", error.message);
+    return;
+  }
+
+  // If signUp succeeds, send them to name screen
+  // (Later we’ll ensure the profile row exists after login/session)
+  console.log("Signup success:", data.user?.id);
+  router.replace("/name");
+};
 
   return (
     <KeyboardAvoidingView

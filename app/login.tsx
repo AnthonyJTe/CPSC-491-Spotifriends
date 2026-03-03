@@ -1,14 +1,15 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { supabase } from "../lib/supabase";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -18,11 +19,22 @@ export default function LoginScreen() {
     return email.trim().length > 0 && password.length >= 6;
   }, [email, password]);
 
-  const onLogin = () => {
-    // Mock for now: later this becomes Supabase auth
-    router.replace("/name");
-  };
+  const onLogin = async () => {
+  const cleanEmail = email.trim();
 
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password,
+  });
+
+  if (error) {
+    console.log("Login error:", error.message);
+    return;
+  }
+
+  console.log("Login success:", data.user?.id);
+  router.replace("/name");
+};
   return (
     <KeyboardAvoidingView
       style={styles.container}

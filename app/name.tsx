@@ -19,7 +19,7 @@ export default function NameScreen() {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder=""
+          placeholder="Name"
           placeholderTextColor="#6B6B7A"
           autoCapitalize="words"
           style={styles.input}
