@@ -9,6 +9,7 @@ import {
     Text,
     View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../lib/supabase";
 
 type SongRow = {
@@ -26,6 +27,7 @@ type SelectedSong = {
 };
 
 export default function SongListScreen() {
+  const insets = useSafeAreaInsets();
   const { slot, top5 } = useLocalSearchParams<{ slot: string; top5?: string }>();
   const [songs, setSongs] = useState<SongRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,10 @@ export default function SongListScreen() {
 
   const handleSelectSong = (song: SongRow) => {
     try {
-      const parsedTop5: (SelectedSong | null)[] = top5 ? JSON.parse(top5) : [null, null, null, null, null];
+      const parsedTop5: (SelectedSong | null)[] = top5
+        ? JSON.parse(top5)
+        : [null, null, null, null, null];
+
       const slotIndex = Number(slot);
 
       if (!Number.isNaN(slotIndex) && slotIndex >= 0 && slotIndex < 5) {
@@ -75,7 +80,7 @@ export default function SongListScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom + 20, 32) }]}>
       <Text style={styles.title}>Choose a song</Text>
 
       {loading ? (
@@ -182,8 +187,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 12,
-    marginBottom: 20,
+    marginTop: 16,
   },
   backButtonText: {
     color: "#F2F2F7",
