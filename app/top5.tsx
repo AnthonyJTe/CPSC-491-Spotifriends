@@ -1,51 +1,30 @@
-import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
-    FlatList,
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
+import { supabase } from "../lib/supabase";
 
 type Song = {
+  id: string;
   title: string;
   artist: string;
   coverUrl: string;
 };
 
-const MOCK_SONGS: Song[] = [
-  {
-    title: "GOOD CREDIT",
-    artist: "Playboi Carti",
-    coverUrl: "https://picsum.photos/seed/cinnamongirl/200",
-  },
-  {
-    title: "Yesterday",
-    artist: "The Beatles",
-    coverUrl: "https://picsum.photos/seed/yesterday/200",
-  },
-  {
-    title: "Distant Lover",
-    artist: "Marvin Gaye",
-    coverUrl: "https://picsum.photos/seed/river/200",
-  },
-  {
-    title: "Moonlight on the River",
-    artist: "Mac DeMarco",
-    coverUrl: "https://picsum.photos/seed/animalcrossing/200",
-  },
-  {
-    title: "Get You",
-    artist: "Daniel Caesar, Kali Uchis",
-    coverUrl: "https://picsum.photos/seed/saveroom/200",
-  },
-];
-
 type RowItem = { id: number };
 
 export default function Top5Screen() {
+  const params = useLocalSearchParams<{
+    top5?: string;
+  }>();
+
   const [top5, setTop5] = useState<(Song | null)[]>([
     null,
     null,
@@ -59,13 +38,28 @@ export default function Top5Screen() {
     []
   );
 
+  useEffect(() => {
+    if (params.top5) {
+      try {
+        const parsed = JSON.parse(params.top5) as (Song | null)[];
+        if (Array.isArray(parsed) && parsed.length === 5) {
+          setTop5(parsed);
+        }
+      } catch (error) {
+        console.log("Failed to parse top5 params:", error);
+      }
+    }
+  }, [params.top5]);
+
   const canContinue = top5.every((s) => s !== null);
 
   const onPickSong = (index: number) => {
-    setTop5((prev) => {
-      const next = [...prev];
-      next[index] = MOCK_SONGS[index % MOCK_SONGS.length];
-      return next;
+    router.push({
+      pathname: "/song-list",
+      params: {
+        slot: String(index),
+        top5: JSON.stringify(top5),
+      },
     });
   };
 
@@ -75,6 +69,59 @@ export default function Top5Screen() {
       next[index] = null;
       return next;
     });
+  };
+
+  const saveTop5ToDatabase = async () => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        Alert.alert("Error", "No authenticated user found.");
+        return;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("user_top5")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (deleteError) {
+        Alert.alert("Error", deleteError.message);
+        return;
+      }
+
+      for (let i = 0; i < top5.length; i++) {
+        const song = top5[i];
+        if (!song) continue;
+
+        const { error: top5Error } = await supabase
+          .from("user_top5")
+          .upsert(
+            {
+              user_id: user.id,
+              position: i + 1,
+              song_id: song.id,
+            },
+            {
+              onConflict: "user_id,position",
+            }
+          );
+
+        if (top5Error) {
+          Alert.alert("Top 5 save error", top5Error.message);
+          return;
+        }
+      }
+
+      Alert.alert("Success", "Your Top 5 was saved.");
+      router.push("/");
+    } catch (error) {
+      console.log("Unexpected Top 5 save error:", error);
+      Alert.alert("Error", "Something went wrong while saving your songs.");
+    }
   };
 
   return (
@@ -88,7 +135,7 @@ export default function Top5Screen() {
         data={rows}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
-        style={{ flexGrow: 0 }}   // prevents list from pushing buttons down
+        style={{ flexGrow: 0 }}
         renderItem={({ item }) => {
           const index = item.id;
           const song = top5[index];
@@ -139,7 +186,7 @@ export default function Top5Screen() {
       <View style={styles.buttonBlock}>
         <Pressable
           disabled={!canContinue}
-          onPress={() => router.push("/")}
+          onPress={saveTop5ToDatabase}
           style={({ pressed }) => [
             styles.primaryButton,
             !canContinue && styles.primaryButtonDisabled,
@@ -228,17 +275,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   centerTextContainer: {
-  flex: 1,
-  justifyContent: "center",
-  marginLeft: 12,   // aligns with real song text column
-},
-
-centerText: {
-  color: "#B8B8C7",
-  fontSize: 15,
-  fontWeight: "600",
-  textAlign: "left",
-},
+    flex: 1,
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  centerText: {
+    color: "#B8B8C7",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "left",
+  },
   rightIcon: {
     width: 34,
     height: 34,
