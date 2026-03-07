@@ -1,15 +1,40 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { supabase } from "../lib/supabase";
 
 export default function NameScreen() {
   const [name, setName] = useState("");
 
   const canContinue = useMemo(() => name.trim().length >= 2, [name]);
 
-  const onContinue = () => {
-    router.push("/photos");
-  };
+  const onContinue = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    console.log("No user found");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({
+      id: user.id,
+      display_name: name,
+    });
+
+  if (error) {
+    console.log("Profile save error:", error.message);
+    return;
+  }
+
+  router.push({
+    pathname: "/photos",
+    params: { name: name },
+  });
+};
 
   return (
     <View style={styles.container}>

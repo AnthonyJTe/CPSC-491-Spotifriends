@@ -1,8 +1,21 @@
-import { router } from "expo-router";
+import { decode } from "base64-arraybuffer";
+import * as FileSystem from "expo-file-system/legacy";
+import * as ImagePicker from "expo-image-picker";
+import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { supabase } from "../lib/supabase";
 
 export default function PhotosScreen() {
+  const { name } = useLocalSearchParams<{ name: string }>();
   const { width } = useWindowDimensions();
 
   const horizontalPadding = 24;
@@ -15,18 +28,142 @@ export default function PhotosScreen() {
 
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
 
-  const addMockPhoto = (index: number) => {
-    const next = [...photos];
-    // Random cat image each tap
-    next[index] = "https://cataas.com/cat?width=400";
-    setPhotos(next);
+  const openGalleryForSlot = async (index: number) => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permissionResult.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Please allow access to your photo library to choose images."
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      const selectedUri = result.assets[0].uri;
+
+      setPhotos((prev) => {
+        const next = [...prev];
+        next[index] = selectedUri;
+        return next;
+      });
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => {
+      const next = [...prev];
+      next[index] = null;
+      return next;
+    });
+  };
+
+  const handleSlotPress = (index: number) => {
+    if (!photos[index]) {
+      openGalleryForSlot(index);
+      return;
+    }
+
+    Alert.alert("Photo options", "What would you like to do?", [
+      {
+        text: "Replace photo",
+        onPress: () => openGalleryForSlot(index),
+      },
+      {
+        text: "Remove photo",
+        style: "destructive",
+        onPress: () => removePhoto(index),
+      },
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+    ]);
   };
 
   const canContinue = photos.some((p) => p !== null);
 
+  const uploadPhotosAndContinue = async () => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.log("No authenticated user found");
+        return;
+      }
+
+      const { error: deleteDbError } = await supabase
+        .from("profile_photos")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (deleteDbError) {
+        console.log("Error clearing old photo rows:", deleteDbError.message);
+        return;
+      }
+
+      for (let i = 0; i < photos.length; i++) {
+        const photoUri = photos[i];
+        if (!photoUri) continue;
+
+        const base64 = await FileSystem.readAsStringAsync(photoUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const arrayBuffer = decode(base64);
+        const filePath = `${user.id}/photo-${i + 1}.jpg`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("profile-photos")
+          .upload(filePath, arrayBuffer, {
+            contentType: "image/jpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.log("Upload error:", uploadError.message);
+          return;
+        }
+
+        const { error: insertError } = await supabase
+          .from("profile_photos")
+         .upsert(
+          {
+           user_id: user.id,
+          position: i + 1,
+          storage_path: filePath,
+          },
+          {
+            onConflict: "user_id,position",
+          }
+        );
+
+        if (insertError) {
+          console.log("Database insert error:", insertError.message);
+          return;
+        }
+      }
+
+      router.push("/top5");
+    } catch (error) {
+      console.log("Unexpected photo upload error:", error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
+        <Text style={styles.welcomeTitle}>Welcome {name}</Text>
         <Text style={styles.title}>Add your photos</Text>
 
         <View style={styles.grid}>
@@ -37,7 +174,7 @@ export default function PhotosScreen() {
             return (
               <Pressable
                 key={index}
-                onPress={() => addMockPhoto(index)}
+                onPress={() => handleSlotPress(index)}
                 style={[
                   styles.slot,
                   {
@@ -60,7 +197,7 @@ export default function PhotosScreen() {
 
         <Pressable
           disabled={!canContinue}
-          onPress={() => router.push("/top5")}
+          onPress={uploadPhotosAndContinue}
           style={({ pressed }) => [
             styles.primaryButton,
             !canContinue && styles.primaryButtonDisabled,
@@ -82,26 +219,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B0B12",
-    justifyContent: "center",
     paddingHorizontal: 24,
+    paddingTop: 80,
   },
+
   content: {
     width: "100%",
-    alignItems: "center",
   },
+
+  welcomeTitle: {
+    fontSize: 48,
+    fontWeight: "800",
+    color: "#8B5CF6",
+    marginBottom: 6,
+  },
+
   title: {
     color: "#F2F2F7",
-    fontSize: 34,
-    fontWeight: "800",
-    marginBottom: 18,
-    alignSelf: "flex-start",
+    fontSize: 32,
+    fontWeight: "700",
+    marginBottom: 30,
   },
+
   grid: {
     width: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: 18,
+    marginBottom: 30,
   },
+
   slot: {
     backgroundColor: "#141426",
     borderRadius: 12,
@@ -111,17 +257,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     overflow: "hidden",
   },
+
   image: {
     width: "100%",
     height: "100%",
   },
+
   plus: {
     fontSize: 40,
-    lineHeight: 40,
     color: "#6B6B7A",
-    textAlign: "center",
-    textAlignVertical: "center",
   },
+
   primaryButton: {
     width: "100%",
     backgroundColor: "#7C5CFF",
@@ -130,17 +276,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+
   primaryButtonDisabled: {
     backgroundColor: "#2A2A3C",
   },
+
   primaryButtonPressed: {
     opacity: 0.9,
   },
+
   primaryButtonText: {
     color: "#F2F2F7",
     fontSize: 16,
     fontWeight: "800",
   },
+
   backButton: {
     width: "100%",
     borderWidth: 1,
@@ -149,6 +299,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
   },
+
   backButtonText: {
     color: "#F2F2F7",
     fontSize: 15,
