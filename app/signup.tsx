@@ -1,6 +1,8 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,81 +16,156 @@ import { supabase } from "../lib/supabase";
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const canSubmit = useMemo(() => {
-    return email.trim().length > 0 && password.length >= 6;
-  }, [email, password]);
+    return email.trim().length > 0 && password.length >= 6 && !loading;
+  }, [email, password, loading]);
+
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, {
+        toValue: 10,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -10,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 8,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -8,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
   const onSignup = async () => {
-  const cleanEmail = email.trim();
+    const cleanEmail = email.trim();
+    setErrorMessage("");
+    setLoading(true);
 
-  const { data, error } = await supabase.auth.signUp({
-    email: cleanEmail,
-    password,
-  });
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+    });
 
-  if (error) {
-    console.log("Signup error:", error.message);
-    return;
-  }
+    setLoading(false);
 
-  // If signUp succeeds, send them to name screen
-  // (Later we’ll ensure the profile row exists after login/session)
-  console.log("Signup success:", data.user?.id);
-  router.replace("/name");
-};
+    if (error) {
+      console.log("Signup error:", error.message);
+
+      if (error.message.toLowerCase().includes("already registered")) {
+        setErrorMessage("An account with this email already exists.");
+      } else if (error.message.toLowerCase().includes("invalid email")) {
+        setErrorMessage("Please enter a valid email address.");
+      } else {
+        setErrorMessage(error.message);
+      }
+
+      triggerShake();
+      return;
+    }
+
+    console.log("Signup success:", data.user?.id);
+    router.replace("/name");
+  };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Sign Up</Text>
-      </View>
-
-      <View style={styles.form}>
-        <View style={styles.field}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            placeholderTextColor="#6B6B7A"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={styles.input}
-          />
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            transform: [{ translateX: shakeAnim }],
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Sign Up</Text>
         </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="At least 6 characters"
-            placeholderTextColor="#6B6B7A"
-            secureTextEntry
-            style={styles.input}
-          />
+        <View style={styles.form}>
+          <View style={styles.field}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (errorMessage) setErrorMessage("");
+              }}
+              placeholder="you@example.com"
+              placeholderTextColor="#6B6B7A"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              editable={!loading}
+              style={[styles.input, errorMessage ? styles.inputError : null]}
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (errorMessage) setErrorMessage("");
+              }}
+              placeholder="At least 6 characters"
+              placeholderTextColor="#6B6B7A"
+              secureTextEntry
+              editable={!loading}
+              style={[styles.input, errorMessage ? styles.inputError : null]}
+            />
+          </View>
+
+          {errorMessage ? (
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          ) : null}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              (!canSubmit || loading) && styles.primaryButtonDisabled,
+              pressed && canSubmit && !loading && styles.primaryButtonPressed,
+            ]}
+            disabled={!canSubmit || loading}
+            onPress={onSignup}
+          >
+            {loading ? (
+              <ActivityIndicator color="#F2F2F7" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Continue</Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={styles.backButton}
+            onPress={() => router.back()}
+            disabled={loading}
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </Pressable>
         </View>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            !canSubmit && styles.primaryButtonDisabled,
-            pressed && canSubmit && styles.primaryButtonPressed,
-          ]}
-          disabled={!canSubmit}
-          onPress={onSignup}
-        >
-          <Text style={styles.primaryButtonText}>Continue</Text>
-        </Pressable>
-
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Back</Text>
-        </Pressable>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
@@ -99,6 +176,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0B0B12",
     paddingHorizontal: 24,
     paddingTop: 40,
+  },
+  content: {
+    flex: 1,
   },
   header: {
     marginTop: 18,
@@ -129,12 +209,22 @@ const styles = StyleSheet.create({
     color: "#F2F2F7",
     fontSize: 16,
   },
+  inputError: {
+    borderColor: "#FF6B6B",
+  },
+  errorText: {
+    color: "#FF6B6B",
+    fontSize: 14,
+    marginTop: -4,
+  },
   primaryButton: {
     marginTop: 8,
     backgroundColor: "#7C5CFF",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 52,
   },
   primaryButtonPressed: {
     opacity: 0.9,
