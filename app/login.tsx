@@ -74,47 +74,110 @@ export default function LoginScreen() {
   };
 
   const onLogin = async () => {
-    setEmailTouched(true);
-    setPasswordTouched(true);
-    clearAuthError();
+  setEmailTouched(true);
+  setPasswordTouched(true);
+  clearAuthError();
 
-    if (!isValidEmail(cleanEmail)) {
-      setErrorMessage("Please enter a valid email address.");
-      triggerShake();
-      return;
-    }
+  if (!isValidEmail(cleanEmail)) {
+    setErrorMessage("Please enter a valid email address.");
+    triggerShake();
+    return;
+  }
 
-    if (password.length < 6) {
-      setErrorMessage("Password must be at least 6 characters.");
-      triggerShake();
-      return;
-    }
+  if (password.length < 6) {
+    setErrorMessage("Password must be at least 6 characters.");
+    triggerShake();
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password,
+  });
 
+  if (error) {
     setLoading(false);
+    console.log("Login error:", error.message);
 
-    if (error) {
-      console.log("Login error:", error.message);
-
-      if (error.message.toLowerCase().includes("invalid login credentials")) {
-        setErrorMessage("Incorrect email or password. Please try again.");
-      } else {
-        setErrorMessage(error.message);
-      }
-
-      triggerShake();
-      return;
+    if (error.message.toLowerCase().includes("invalid login credentials")) {
+      setErrorMessage("Incorrect email or password. Please try again.");
+    } else {
+      setErrorMessage(error.message);
     }
 
-    console.log("Login success:", data.user?.id);
+    triggerShake();
+    return;
+  }
+
+  const user = data.user;
+
+  if (!user) {
+    setLoading(false);
+    setErrorMessage("No user found after login.");
+    triggerShake();
+    return;
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    setLoading(false);
+    setErrorMessage(profileError.message);
+    triggerShake();
+    return;
+  }
+
+  const { data: photos, error: photosError } = await supabase
+    .from("profile_photos")
+    .select("id")
+    .eq("user_id", user.id);
+
+  if (photosError) {
+    setLoading(false);
+    setErrorMessage(photosError.message);
+    triggerShake();
+    return;
+  }
+
+  const { data: top5, error: top5Error } = await supabase
+    .from("user_top5")
+    .select("position")
+    .eq("user_id", user.id);
+
+  if (top5Error) {
+    setLoading(false);
+    setErrorMessage(top5Error.message);
+    triggerShake();
+    return;
+  }
+
+  setLoading(false);
+
+  console.log("Login success:", user.id);
+
+  if (!profile) {
     router.replace("/name");
-  };
+    return;
+  }
+
+  if (!photos || photos.length === 0) {
+    router.replace("/photos");
+    return;
+  }
+
+  if (!top5 || top5.length < 5) {
+    router.replace("/top5");
+    return;
+  }
+
+  router.replace("/home");
+};
 
   return (
     <KeyboardAvoidingView
